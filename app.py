@@ -98,10 +98,7 @@ def detect_fire_yolo(img_pil):
                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
 
     return Image.fromarray(img_array)
-    
-    print(f"Jumlah box terdeteksi: {len(boxes)}")
-for box in boxes:
-    print(f"Label: {results.names[int(box.cls[0])]}, Confidence: {box.conf[0]:.2f}")
+
 
 # ============ Upload atau Kamera ============
 st.sidebar.header("📸 Input Gambar")
