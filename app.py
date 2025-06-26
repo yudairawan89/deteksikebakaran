@@ -18,7 +18,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ============ Load Model ============
-yolo_model = YOLO("best.torchscript")
+yolo_model = YOLO("best.pt")
 vit_gru_model = None
 
 
@@ -37,8 +37,8 @@ if not os.path.exists(vitgru_path):
 @st.cache_resource
 def load_vit_gru():
     class ViT_GRU(torch.nn.Module):
-        def __init__(self, hidden_dim=128, num_classes=2):
-            super(ViT_GRU, self).__init__()
+        def _init_(self, hidden_dim=128, num_classes=2):
+            super(ViT_GRU, self)._init_()
             self.vit = create_model("vit_base_patch16_224", pretrained=False, num_classes=2)
             self.vit.head = torch.nn.Identity()
             self.gru = torch.nn.GRU(768, hidden_dim, batch_first=True)
@@ -81,24 +81,15 @@ def detect_fire_yolo(img_pil):
     img_array = np.array(img_pil)
     results = yolo_model(img_array, verbose=False)[0]
     boxes = results.boxes
-
-    print(f"Jumlah box terdeteksi: {len(boxes)}")
     for box in boxes:
         x1, y1, x2, y2 = map(int, box.xyxy[0])
         cls = int(box.cls[0])
         conf = float(box.conf[0])
         label = f"{results.names[cls]} ({conf*100:.1f}%)"
-        
-        print(f"Label: {results.names[cls]}, Confidence: {conf:.2f}")
-        
-        # Gambar bounding box merah
-        cv2.rectangle(img_array, (x1, y1), (x2, y2), (255, 0, 0), 3)
-        # Label dengan warna kuning
+        cv2.rectangle(img_array, (x1, y1), (x2, y2), (0, 0, 255), 2)
         cv2.putText(img_array, label, (x1, y1 - 10),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
-
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 0), 2)
     return Image.fromarray(img_array)
-
 
 # ============ Upload atau Kamera ============
 st.sidebar.header("📸 Input Gambar")
