@@ -144,8 +144,8 @@ if not os.path.exists(vitgru_path):
 @st.cache_resource
 def load_vit_gru():
     class ViT_GRU(torch.nn.Module):
-        def __init__(self, ...):  
-            super(ViT_GRU, self).__init__()  
+        def __init__(self, hidden_dim=128, num_classes=2):  # ✅ Fix __init__
+            super(ViT_GRU, self).__init__()                 # ✅ Fix super()
             self.vit = create_model("vit_base_patch16_224", pretrained=False, num_classes=2)
             self.vit.head = torch.nn.Identity()
             self.gru = torch.nn.GRU(768, hidden_dim, batch_first=True)
