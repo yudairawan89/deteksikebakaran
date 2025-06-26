@@ -82,11 +82,14 @@ def detect_fire_yolo(img_pil):
     results = yolo_model(img_array, verbose=False)[0]
     boxes = results.boxes
 
+    print(f"Jumlah box terdeteksi: {len(boxes)}")
     for box in boxes:
         x1, y1, x2, y2 = map(int, box.xyxy[0])
         cls = int(box.cls[0])
         conf = float(box.conf[0])
         label = f"{results.names[cls]} ({conf*100:.1f}%)"
+        
+        print(f"Label: {results.names[cls]}, Confidence: {conf:.2f}")
         
         # Gambar bounding box merah
         cv2.rectangle(img_array, (x1, y1), (x2, y2), (255, 0, 0), 3)
@@ -95,6 +98,7 @@ def detect_fire_yolo(img_pil):
                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
 
     return Image.fromarray(img_array)
+    
     print(f"Jumlah box terdeteksi: {len(boxes)}")
 for box in boxes:
     print(f"Label: {results.names[int(box.cls[0])]}, Confidence: {box.conf[0]:.2f}")
