@@ -87,8 +87,8 @@ refresh = image is None
 
 # === PREDIKSI DARI SENSOR REALTIME ===
 with st.container():
-    if refresh:
-        st_autorefresh(interval=10000, key="refresh_iot")
+    #if refresh:
+    #    st_autorefresh(interval=10000, key="refresh_iot")
 
     # Tambahkan tombol untuk menarik ulang data
     tarik = st.button("🔄 Tarik Data Sensor Terbaru")
