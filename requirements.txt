@@ -9,3 +9,4 @@ torchvision
 ultralytics
 joblib
 streamlit-autorefresh
+scikit-learn==1.5.1
