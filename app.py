@@ -65,6 +65,11 @@ def load_sensor_data():
     url = "https://docs.google.com/spreadsheets/d/1ZscUJ6SLPIF33t8ikVHUmR68b-y3Q9_r_p9d2rDRMCM/export?format=csv"
     return pd.read_csv(url)
 
+
+# === MATIKAN AUTOREFRESH SAAT GAMBAR DIPILIH ===
+refresh = image is None
+
+
 # === PREDIKSI DARI SENSOR REALTIME ===
 with st.container():
     if refresh:
@@ -214,8 +219,7 @@ elif option == "Gunakan Kamera":
     if img_cam:
         image = Image.open(img_cam).convert("RGB")
 
-# === MATIKAN AUTOREFRESH SAAT GAMBAR DIPILIH ===
-refresh = image is None
+
 
 
 
