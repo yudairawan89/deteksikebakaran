@@ -64,12 +64,17 @@ transform = transforms.Compose([
 ])
 
 # ============ Fungsi Klasifikasi ViT-GRU ============
+
 def classify_fire(image):
     tensor = transform(image).unsqueeze(0)
     outputs = vit_gru_model(tensor)
     prob = torch.softmax(outputs, dim=1)
     label = torch.argmax(prob).item()
-    return label, prob[0][label].item()
+
+    # Membalik label (0 jadi 1, 1 jadi 0)
+    label = 1 - label
+    return label, prob[0][1 - label].item()
+
 
 # ============ Fungsi Deteksi YOLO ============
 def detect_fire_yolo(img_pil):
