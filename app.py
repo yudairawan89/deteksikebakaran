@@ -67,7 +67,7 @@ def load_sensor_data():
 
 # === PREDIKSI DARI SENSOR REALTIME ===
 with st.container():
-    st_autorefresh(interval=7000, key="refresh_iot")
+    st_autorefresh(interval=10000, key="refresh_iot")
     df = load_sensor_data()
 
     if df is not None and not df.empty:
