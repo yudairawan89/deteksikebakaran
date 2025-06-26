@@ -8,6 +8,23 @@ from torchvision import transforms
 import torchvision.transforms.functional as TF
 import os
 from ultralytics import YOLO
+import pandas as pd
+import joblib
+from datetime import datetime
+
+def convert_day_to_indonesian(day_name):
+    return {
+        'Monday': 'Senin', 'Tuesday': 'Selasa', 'Wednesday': 'Rabu',
+        'Thursday': 'Kamis', 'Friday': 'Jumat', 'Saturday': 'Sabtu',
+        'Sunday': 'Minggu'
+    }.get(day_name, day_name)
+
+def convert_to_label(pred):
+    return {
+        0: "Low / Rendah", 1: "Moderate / Sedang",
+        2: "High / Tinggi", 3: "Very High / Sangat Tinggi"
+    }.get(pred, "Unknown")
+
 
 # ============ Konfigurasi Tampilan Streamlit ============
 st.set_page_config(page_title="🔥 Deteksi Api dan Klasifikasi", layout="wide")
@@ -20,6 +37,60 @@ st.markdown("""
 # ============ Load Model ============
 yolo_model = YOLO("best.torchscript")
 vit_gru_model = None
+# LSTM
+scaler = joblib.load("scaler.joblib")
+model = joblib.load("LSTM.joblib")
+
+
+# ============ Load Sensor ============
+st.markdown("<hr>", unsafe_allow_html=True)
+st.subheader("📡 Data Sensor Realtime dan Prediksi Risiko Kebakaran")
+
+# Simulasi data (bisa Anda ganti dengan data dari IoT atau CSV)
+sensor_data = {
+    "Tavg: Temperatur rata-rata (°C)": 25.0,
+    "RH_avg: Kelembapan rata-rata (%)": 80.0,
+    "RR: Curah hujan (mm)": 50.0,
+    "ff_avg: Kecepatan angin rata-rata (m/s)": 2.0,
+    "Kelembaban Permukaan Tanah": 70.0
+}
+df_sensor = pd.DataFrame({
+    "Variabel": list(sensor_data.keys()),
+    "Value": list(sensor_data.values())
+})
+
+# Prediksi risiko menggunakan model
+scaled_input = scaler.transform(pd.DataFrame([sensor_data]))
+pred = model.predict(scaled_input)[0]
+risk_label = convert_to_label(pred)
+
+# Tanggal sekarang
+now = datetime(2025, 4, 27)  # ganti ke datetime.now() untuk real-time
+hari = convert_day_to_indonesian(now.strftime('%A'))
+tanggal = now.strftime('%d %B %Y')
+
+# Tampilkan tabel
+st.markdown("<h5 style='text-align: center;'>Data Sensor Realtime</h5>", unsafe_allow_html=True)
+sensor_html = "<table style='width: 100%; border-collapse: collapse;'>"
+sensor_html += "<thead><tr><th>Variabel</th><th>Value</th></tr></thead><tbody>"
+for i in range(len(df_sensor)):
+    var = df_sensor.iloc[i, 0]
+    val = df_sensor.iloc[i, 1]
+    sensor_html += f"<tr><td style='padding:6px;'>{var}</td><td style='padding:6px;'>{val}</td></tr>"
+sensor_html += "</tbody></table>"
+st.markdown(sensor_html, unsafe_allow_html=True)
+
+# Tampilkan hasil prediksi
+st.markdown(
+    f"<p style='background-color:blue; color:white; padding:10px; border-radius:8px; font-weight:bold;'>"
+    f"Pada hari {hari}, tanggal {tanggal}, lahan ini diprediksi memiliki tingkat resiko kebakaran: "
+    f"<span style='text-decoration: underline; font-size: 22px;'>{risk_label}</span></p>",
+    unsafe_allow_html=True
+)
+
+
+# ============ Akhir load Sensor ============
+
 
 
 
