@@ -21,6 +21,19 @@ st.markdown("""
 yolo_model = YOLO("best.pt")
 vit_gru_model = None
 
+
+
+import gdown
+
+# ======== Cek dan Unduh vitgru.pt dari Google Drive jika belum ada ========
+vitgru_path = "vitgru.pt"
+gdrive_url = "https://drive.google.com/uc?id=18L1CzKDuz-ESnJUdzlOkKYl2GbPA2gvI"
+
+if not os.path.exists(vitgru_path):
+    with st.spinner("Mengunduh model ViT+GRU dari Google Drive..."):
+        gdown.download(gdrive_url, vitgru_path, quiet=False)
+
+
 @st.cache_resource
 def load_vit_gru():
     class ViT_GRU(torch.nn.Module):
