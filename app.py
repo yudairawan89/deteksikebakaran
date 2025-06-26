@@ -66,7 +66,7 @@ def load_sensor_data():
     return pd.read_csv(url)
 
 # === PREDIKSI DARI SENSOR REALTIME ===
-with st.container():
+with st.expander("🔁 Lihat Data Sensor Realtime (Auto Refresh 10 detik)", expanded=True):
     st_autorefresh(interval=10000, key="refresh_iot")
     df = load_sensor_data()
 
