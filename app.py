@@ -18,7 +18,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ============ Load Model ============
-yolo_model = YOLO("best.pt")
+yolo_model = YOLO("best.torchscript")
 vit_gru_model = None
 
 
