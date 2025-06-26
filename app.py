@@ -11,20 +11,7 @@ from ultralytics import YOLO
 import pandas as pd
 import joblib
 from datetime import datetime
-
-def convert_day_to_indonesian(day_name):
-    return {
-        'Monday': 'Senin', 'Tuesday': 'Selasa', 'Wednesday': 'Rabu',
-        'Thursday': 'Kamis', 'Friday': 'Jumat', 'Saturday': 'Sabtu',
-        'Sunday': 'Minggu'
-    }.get(day_name, day_name)
-
-def convert_to_label(pred):
-    return {
-        0: "Low / Rendah", 1: "Moderate / Sedang",
-        2: "High / Tinggi", 3: "Very High / Sangat Tinggi"
-    }.get(pred, "Unknown")
-
+from streamlit_autorefresh import st_autorefresh
 
 # ============ Konfigurasi Tampilan Streamlit ============
 st.set_page_config(page_title="🔥 Deteksi Api dan Klasifikasi", layout="wide")
@@ -35,61 +22,110 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ============ Load Model ============
-yolo_model = YOLO("best.torchscript")
+yolo_model = YOLO("best.pt")
 vit_gru_model = None
-# LSTM
-scaler = joblib.load("scaler.joblib")
-model = joblib.load("LSTM.joblib")
 
+# === Fungsi konversi bahasa Indonesia ===
+def convert_day_to_indonesian(day_name):
+    return {'Monday': 'Senin', 'Tuesday': 'Selasa', 'Wednesday': 'Rabu',
+            'Thursday': 'Kamis', 'Friday': 'Jumat', 'Saturday': 'Sabtu',
+            'Sunday': 'Minggu'}.get(day_name, day_name)
 
-# ============ Load Sensor ============
-st.markdown("<hr>", unsafe_allow_html=True)
-st.subheader("📡 Data Sensor Realtime dan Prediksi Risiko Kebakaran")
+def convert_month_to_indonesian(month_name):
+    return {'January': 'Januari', 'February': 'Februari', 'March': 'Maret',
+            'April': 'April', 'May': 'Mei', 'June': 'Juni', 'July': 'Juli',
+            'August': 'Agustus', 'September': 'September', 'October': 'Oktober',
+            'November': 'November', 'December': 'Desember'}.get(month_name, month_name)
 
-# Simulasi data (bisa Anda ganti dengan data dari IoT atau CSV)
-sensor_data = {
-    "Tavg: Temperatur rata-rata (°C)": 25.0,
-    "RH_avg: Kelembapan rata-rata (%)": 80.0,
-    "RR: Curah hujan (mm)": 50.0,
-    "ff_avg: Kecepatan angin rata-rata (m/s)": 2.0,
-    "Kelembaban Permukaan Tanah": 70.0
+def convert_to_label(pred):
+    return {0: "Low / Rendah", 1: "Moderate / Sedang", 2: "High / Tinggi", 3: "Very High / Sangat Tinggi"}.get(pred, "Unknown")
+
+risk_styles = {
+    "Low / Rendah": ("white", "blue"),
+    "Moderate / Sedang": ("white", "green"),
+    "High / Tinggi": ("black", "yellow"),
+    "Very High / Sangat Tinggi": ("white", "red")
 }
-df_sensor = pd.DataFrame({
-    "Variabel": list(sensor_data.keys()),
-    "Value": list(sensor_data.values())
-})
 
-# Prediksi risiko menggunakan model
-scaled_input = scaler.transform(pd.DataFrame([sensor_data]))
-pred = model.predict(scaled_input)[0]
-risk_label = convert_to_label(pred)
+# === Load Model & Scaler ===
+@st.cache_resource
+def load_model():
+    return joblib.load("RHSEM_IoT_Model.joblib")
 
-# Tanggal sekarang
-now = datetime(2025, 4, 27)  # ganti ke datetime.now() untuk real-time
-hari = convert_day_to_indonesian(now.strftime('%A'))
-tanggal = now.strftime('%d %B %Y')
+@st.cache_resource
+def load_scaler():
+    return joblib.load("scaler.joblib")
 
-# Tampilkan tabel
-st.markdown("<h5 style='text-align: center;'>Data Sensor Realtime</h5>", unsafe_allow_html=True)
-sensor_html = "<table style='width: 100%; border-collapse: collapse;'>"
-sensor_html += "<thead><tr><th>Variabel</th><th>Value</th></tr></thead><tbody>"
-for i in range(len(df_sensor)):
-    var = df_sensor.iloc[i, 0]
-    val = df_sensor.iloc[i, 1]
-    sensor_html += f"<tr><td style='padding:6px;'>{var}</td><td style='padding:6px;'>{val}</td></tr>"
-sensor_html += "</tbody></table>"
-st.markdown(sensor_html, unsafe_allow_html=True)
+model = load_model()
+scaler = load_scaler()
 
-# Tampilkan hasil prediksi
-st.markdown(
-    f"<p style='background-color:blue; color:white; padding:10px; border-radius:8px; font-weight:bold;'>"
-    f"Pada hari {hari}, tanggal {tanggal}, lahan ini diprediksi memiliki tingkat resiko kebakaran: "
-    f"<span style='text-decoration: underline; font-size: 22px;'>{risk_label}</span></p>",
-    unsafe_allow_html=True
-)
+# === Load Data Sensor dari Google Sheets ===
+@st.cache_data(ttl=60)
+def load_sensor_data():
+    url = "https://docs.google.com/spreadsheets/d/1ZscUJ6SLPIF33t8ikVHUmR68b-y3Q9_r_p9d2rDRMCM/export?format=csv"
+    return pd.read_csv(url)
 
+# === PREDIKSI DARI SENSOR REALTIME ===
+with st.container():
+    st_autorefresh(interval=7000, key="refresh_iot")
+    df = load_sensor_data()
 
-# ============ Akhir load Sensor ============
+    if df is not None and not df.empty:
+        df = df.rename(columns={
+            'Suhu Udara': 'Tavg: Temperatur rata-rata (°C)',
+            'Kelembapan Udara': 'RH_avg: Kelembapan rata-rata (%)',
+            'Curah Hujan/Jam': 'RR: Curah hujan (mm)',
+            'Kecepatan Angin (ms)': 'ff_avg: Kecepatan angin rata-rata (m/s)',
+            'Kelembapan Tanah': 'Kelembaban Permukaan Tanah',
+            'Waktu': 'Waktu'
+        })
+
+        fitur = [
+            'Tavg: Temperatur rata-rata (°C)',
+            'RH_avg: Kelembapan rata-rata (%)',
+            'RR: Curah hujan (mm)',
+            'ff_avg: Kecepatan angin rata-rata (m/s)',
+            'Kelembaban Permukaan Tanah'
+        ]
+
+        clean_df = df[fitur].copy()
+        for col in fitur:
+            clean_df[col] = clean_df[col].astype(str).str.replace(',', '.').astype(float).fillna(0)
+
+        scaled_all = scaler.transform(clean_df)
+        predictions = [convert_to_label(p) for p in model.predict(scaled_all)]
+        df["Prediksi Kebakaran"] = predictions
+
+        last_row = df.iloc[-1]
+        waktu = pd.to_datetime(last_row['Waktu'])
+        hari = convert_day_to_indonesian(waktu.strftime('%A'))
+        bulan = convert_month_to_indonesian(waktu.strftime('%B'))
+        tanggal = waktu.strftime(f'%d {bulan} %Y')
+        risk_label = last_row["Prediksi Kebakaran"]
+        font, bg = risk_styles.get(risk_label, ("black", "white"))
+
+        sensor_df = pd.DataFrame({
+            "Variabel": fitur,
+            "Value": [f"{last_row[col]:.1f}" for col in fitur]
+        })
+
+        st.markdown("<h5 style='text-align: center;'>Data Sensor Realtime</h5>", unsafe_allow_html=True)
+        sensor_html = "<table style='width: 100%; border-collapse: collapse;'>"
+        sensor_html += "<thead><tr><th>Variabel</th><th>Value</th></tr></thead><tbody>"
+        for i in range(len(sensor_df)):
+            var = sensor_df.iloc[i, 0]
+            val = sensor_df.iloc[i, 1]
+            sensor_html += f"<tr><td style='padding:6px;'>{var}</td><td style='padding:6px;'>{val}</td></tr>"
+        sensor_html += "</tbody></table>"
+        st.markdown(sensor_html, unsafe_allow_html=True)
+
+        st.markdown(
+            f"<p style='background-color:{bg}; color:{font}; padding:10px; border-radius:8px; font-weight:bold;'>"
+            f"Pada hari {hari}, tanggal {tanggal}, lahan ini diprediksi memiliki tingkat resiko kebakaran: "
+            f"<span style='text-decoration: underline; font-size: 22px;'>{risk_label}</span></p>",
+            unsafe_allow_html=True
+        )
+
 
 
 
@@ -108,8 +144,8 @@ if not os.path.exists(vitgru_path):
 @st.cache_resource
 def load_vit_gru():
     class ViT_GRU(torch.nn.Module):
-        def __init__(self, hidden_dim=128, num_classes=2):
-            super(ViT_GRU, self).__init__()
+        def _init_(self, hidden_dim=128, num_classes=2):
+            super(ViT_GRU, self)._init_()
             self.vit = create_model("vit_base_patch16_224", pretrained=False, num_classes=2)
             self.vit.head = torch.nn.Identity()
             self.gru = torch.nn.GRU(768, hidden_dim, batch_first=True)
