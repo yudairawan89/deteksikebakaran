@@ -66,8 +66,9 @@ def load_sensor_data():
     return pd.read_csv(url)
 
 # === PREDIKSI DARI SENSOR REALTIME ===
-with st.expander("🔁 Lihat Data Sensor Realtime (Auto Refresh 10 detik)", expanded=True):
-    st_autorefresh(interval=10000, key="refresh_iot")
+with st.container():
+    if refresh:
+        st_autorefresh(interval=10000, key="refresh_iot")
     df = load_sensor_data()
 
     if df is not None and not df.empty:
@@ -202,14 +203,21 @@ def detect_fire_yolo(img_pil):
 st.sidebar.header("📸 Input Gambar")
 option = st.sidebar.radio("Pilih metode input", ["Upload Gambar", "Gunakan Kamera"])
 
+image = None  # Inisialisasi dulu
+
 if option == "Upload Gambar":
     uploaded = st.sidebar.file_uploader("Upload file gambar", type=["jpg", "jpeg", "png"])
     if uploaded:
         image = Image.open(uploaded).convert("RGB")
 elif option == "Gunakan Kamera":
-    image = st.camera_input("Ambil gambar dengan kamera")
-    if image:
-        image = Image.open(image).convert("RGB")
+    img_cam = st.camera_input("Ambil gambar dengan kamera")
+    if img_cam:
+        image = Image.open(img_cam).convert("RGB")
+
+# === MATIKAN AUTOREFRESH SAAT GAMBAR DIPILIH ===
+refresh = image is None
+
+
 
 # ============ Tampilkan Hasil Deteksi ============
 if 'image' in locals():
