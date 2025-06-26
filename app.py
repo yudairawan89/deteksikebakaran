@@ -224,7 +224,7 @@ def detect_fire_yolo(img_pil):
 
 
 # ============ Tampilkan Hasil Deteksi ============
-if 'image' in locals():
+if image is not None:
     col1, col2 = st.columns(2)
 
     with col1:
