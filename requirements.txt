@@ -1,6 +1,8 @@
 streamlit
-pandas
-joblib
-scikit-learn
-xgboost
-streamlit-autorefresh
+torch
+torchvision
+timm
+opencv-python
+numpy
+pillow
+matplotlib
