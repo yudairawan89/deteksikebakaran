@@ -89,7 +89,15 @@ refresh = image is None
 with st.container():
     if refresh:
         st_autorefresh(interval=10000, key="refresh_iot")
-    df = load_sensor_data()
+
+    # Tambahkan tombol untuk menarik ulang data
+    tarik = st.button("🔄 Tarik Data Sensor Terbaru")
+
+    # Jika tombol diklik, abaikan cache
+    if tarik:
+        df = load_sensor_data.clear() or load_sensor_data()
+    else:
+        df = load_sensor_data()
 
     if df is not None and not df.empty:
         df = df.rename(columns={
