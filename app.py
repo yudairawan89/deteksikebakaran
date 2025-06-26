@@ -66,8 +66,7 @@ def load_sensor_data():
     return pd.read_csv(url)
 
 
-# === MATIKAN AUTOREFRESH SAAT GAMBAR DIPILIH ===
-refresh = image is None
+
 
 
 # === PREDIKSI DARI SENSOR REALTIME ===
@@ -220,7 +219,8 @@ elif option == "Gunakan Kamera":
         image = Image.open(img_cam).convert("RGB")
 
 
-
+# === MATIKAN AUTOREFRESH SAAT GAMBAR DIPILIH ===
+refresh = image is None
 
 
 # ============ Tampilkan Hasil Deteksi ============
