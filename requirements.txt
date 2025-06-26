@@ -1,9 +1,8 @@
-streamlit
+opencv-python-headless
 torch
-torchvision
 timm
-opencv-python
-numpy
-pillow
-matplotlib
 gdown
+Pillow
+streamlit
+numpy
+torchvision
