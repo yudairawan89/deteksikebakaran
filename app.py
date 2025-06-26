@@ -50,7 +50,7 @@ risk_styles = {
 # === Load Model & Scaler ===
 @st.cache_resource
 def load_model():
-    return joblib.load("RHSEM_IoT_Model.joblib")
+    return joblib.load("LSTM.joblib")
 
 @st.cache_resource
 def load_scaler():
