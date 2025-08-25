@@ -74,8 +74,10 @@ def standardize_columns(df: pd.DataFrame) -> pd.DataFrame:
     rename_map, missing_targets = {}, []
     for target, aliases in mapping_candidates.items():
         found = next((a for a in aliases if a in df.columns), None)
-        if found: rename_map[found] = target
-        else: missing_targets.append(target)
+        if found:
+            rename_map[found] = target
+        else:
+            missing_targets.append(target)
     df = df.rename(columns=rename_map)
     if missing_targets:
         st.warning(f"Beberapa kolom yang diharapkan belum ada di data: {missing_targets}. "
@@ -107,11 +109,18 @@ def get_yolo():
 
 yolo_model = get_yolo()
 
-# ========================== Input Gambar =============================
+# ========================== Input & Controls =========================
 st.sidebar.header("📸 Input Gambar")
 option = st.sidebar.radio("Pilih metode input", ["Upload Gambar", "Gunakan Kamera"])
-image = None
+# Toggle auto-refresh 5 detik (hanya mempengaruhi penarikan data sensor)
+auto_refresh = st.sidebar.checkbox("🔁 Auto-refresh data sensor (5 detik)", value=True)
 
+# Jalankan autorefresh (me-refresh seluruh app) jika toggle aktif
+if auto_refresh:
+    # interval dalam ms → 5000 = 5 detik
+    st_autorefresh(interval=5000, key="sensor_auto_refresh")
+
+image = None
 if option == "Upload Gambar":
     uploaded = st.sidebar.file_uploader("Upload file gambar", type=["jpg", "jpeg", "png"])
     if uploaded:
@@ -124,7 +133,8 @@ elif option == "Gunakan Kamera":
 # ====================== Prediksi Sensor IoT ==========================
 with st.container():
     tarik = st.button("🔄 Tarik Data Sensor Terbaru")
-    if tarik:
+    # Jika tombol ditekan ATAU auto-refresh aktif, ambil ulang data dan clear cache
+    if tarik or auto_refresh:
         df = load_sensor_data.clear() or load_sensor_data()
     else:
         df = load_sensor_data()
@@ -227,7 +237,7 @@ def detect_fire_yolo(img_pil):
         st.info("YOLO belum siap. Menampilkan gambar tanpa bounding box.")
         return img_pil
     img_array = np.array(img_pil)
-    # Optional: kecilkan resolusi untuk CPU agar lebih cepat, contoh imgsz=416
+    # Kecilkan resolusi untuk CPU agar lebih cepat
     results = yolo_model(img_array, imgsz=416, verbose=False)[0]
     boxes = results.boxes
     for box in boxes:
