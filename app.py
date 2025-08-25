@@ -13,7 +13,7 @@ from datetime import datetime
 from streamlit_autorefresh import st_autorefresh
 import gdown
 
-# ============ Konfigurasi Tampilan Streamlit ============
+# ============================== UI ==================================
 st.set_page_config(page_title="🔥 Deteksi Api dan Klasifikasi", layout="wide")
 st.markdown("""
     <h1 style='text-align: center; color: red;'>🔥 Sistem Deteksi Kebakaran</h1>
@@ -21,7 +21,7 @@ st.markdown("""
     <hr style="border: 2px solid red;">
 """, unsafe_allow_html=True)
 
-# ============ Util: Konversi Hari/Bulan ============
+# ======================= Util: Localization ==========================
 def convert_day_to_indonesian(day_name):
     return {'Monday': 'Senin', 'Tuesday': 'Selasa', 'Wednesday': 'Rabu',
             'Thursday': 'Kamis', 'Friday': 'Jumat', 'Saturday': 'Sabtu',
@@ -43,7 +43,7 @@ risk_styles = {
     "Very High / Sangat Tinggi": ("white", "red")
 }
 
-# ============ Loader Model ML IoT ============
+# =================== Loader Model ML (IoT) ===========================
 @st.cache_resource
 def load_model():
     return joblib.load("LSTM.joblib")
@@ -55,14 +55,63 @@ def load_scaler():
 model = load_model()
 scaler = load_scaler()
 
-# ============ Data Sensor dari Google Sheets ============
+# ==================== Data Sensor (Google Sheets) ====================
+SHEET_CSV = "https://docs.google.com/spreadsheets/d/1epkIp2U1okjCfXOoz_bkgey4kYa30EtmWlLB6c_911Y/export?format=csv"
+
 @st.cache_data(ttl=60)
 def load_sensor_data():
-    # LINK GOOGLE SHEETS BARU (export CSV)
-    url = "https://docs.google.com/spreadsheets/d/1epkIp2U1okjCfXOoz_bkgey4kYa30EtmWlLB6c_911Y/export?format=csv"
-    return pd.read_csv(url)
+    return pd.read_csv(SHEET_CSV)
 
-# ============ YOLO Loader Aman ============
+def standardize_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Standarkan kolom sheet ke nama yang diharapkan oleh scaler/model.
+    Mendukung beberapa alias bila nama kolom berubah.
+    """
+    # Aliases dari sheet -> target
+    mapping_candidates = {
+        "Waktu": ["Waktu", "Timestamp", "Time", "Datetime"],
+        "Tavg: Temperatur rata-rata (°C)": ["Tavg: Temperatur rata-rata (°C)", "Suhu", "Temperature", "Temp"],
+        "RH_avg: Kelembapan rata-rata (%)": ["RH_avg: Kelembapan rata-rata (%)", "Kelembapan Udara", "Humidity"],
+        "Kelembaban Permukaan Tanah": ["Kelembaban Permukaan Tanah", "Kelembapan Tanah", "Soil Moisture"],
+        "ff_avg: Kecepatan angin rata-rata (m/s)": ["ff_avg: Kecepatan angin rata-rata (m/s)", "Kecepatan Angin", "Wind Speed"],
+        "RR: Curah hujan (mm)": ["RR: Curah hujan (mm)", "Curah Hujan", "Rainfall"]
+    }
+
+    rename_map = {}
+    missing_targets = []
+
+    for target, aliases in mapping_candidates.items():
+        found = None
+        for a in aliases:
+            if a in df.columns:
+                found = a
+                break
+        if found is not None:
+            rename_map[found] = target
+        else:
+            missing_targets.append(target)
+
+    df = df.rename(columns=rename_map)
+
+    # Tampilkan informasi jika masih ada yang kurang
+    if missing_targets:
+        st.warning(f"Beberapa kolom yang diharapkan belum ada di data: {missing_targets}. "
+                   f"Kolom tersedia saat ini: {list(df.columns)}")
+
+    return df
+
+def to_float_series(s: pd.Series) -> pd.Series:
+    # ganti koma -> titik, drop spasi, lalu ke float; NaN jadi 0
+    return (
+        s.astype(str)
+         .str.replace(",", ".", regex=False)
+         .str.strip()
+         .replace({"": np.nan})
+         .astype(float)
+         .fillna(0.0)
+    )
+
+# ========================== YOLO Loader ==============================
 YOLO_WEIGHTS_PATH = "best.pt"
 
 def _valid_file(path: str, min_bytes: int = 100_000) -> bool:
@@ -70,27 +119,21 @@ def _valid_file(path: str, min_bytes: int = 100_000) -> bool:
 
 @st.cache_resource(show_spinner=True)
 def get_yolo():
-    """Coba load YOLO; jika file tidak ada/korup atau gagal load, kembalikan None & tampilkan pesan yang ramah."""
     if not _valid_file(YOLO_WEIGHTS_PATH):
-        st.warning(
-            f"Model YOLO '{YOLO_WEIGHTS_PATH}' tidak ditemukan atau terlalu kecil. "
-            f"Letakkan file bobot di direktori yang sama dengan aplikasi (mis. /mount/src/deteksikebakaran/). "
-            f"Nama file: {YOLO_WEIGHTS_PATH}"
+        st.info(
+            f"Model YOLO '{YOLO_WEIGHTS_PATH}' belum ditemukan/invalid. "
+            f"Aplikasi tetap jalan tanpa bounding box. Taruh file bobot di folder app."
         )
         return None
     try:
         return YOLO(YOLO_WEIGHTS_PATH)
     except Exception as e:
-        st.error(
-            "Gagal memuat YOLO dari 'best.pt'. "
-            "Periksa kompatibilitas versi Ultralytics/PyTorch atau ulangi unggah file bobot.\n\n"
-            f"Detail error: {e}"
-        )
+        st.error(f"Gagal memuat YOLO dari '{YOLO_WEIGHTS_PATH}'. Detail: {e}")
         return None
 
 yolo_model = get_yolo()
 
-# ============ Upload Gambar ============
+# ========================== Input Gambar =============================
 st.sidebar.header("📸 Input Gambar")
 option = st.sidebar.radio("Pilih metode input", ["Upload Gambar", "Gunakan Kamera"])
 image = None
@@ -104,9 +147,7 @@ elif option == "Gunakan Kamera":
     if img_cam:
         image = Image.open(img_cam).convert("RGB")
 
-refresh = image is None
-
-# ============ Prediksi Sensor IoT ============
+# ====================== Prediksi Sensor IoT ==========================
 with st.container():
     tarik = st.button("🔄 Tarik Data Sensor Terbaru")
     if tarik:
@@ -114,18 +155,12 @@ with st.container():
     else:
         df = load_sensor_data()
 
-    risk_label = None  # inisialisasi
+    risk_label = None
     if df is not None and not df.empty:
-        # Jika nama kolom di sheet baru berbeda, sesuaikan di sini
-        df = df.rename(columns={
-            'Suhu Udara': 'Tavg: Temperatur rata-rata (°C)',
-            'Kelembapan Udara': 'RH_avg: Kelembapan rata-rata (%)',
-            'Curah Hujan/Jam': 'RR: Curah hujan (mm)',
-            'Kecepatan Angin (ms)': 'ff_avg: Kecepatan angin rata-rata (m/s)',
-            'Kelembapan Tanah': 'Kelembaban Permukaan Tanah',
-            'Waktu': 'Waktu'
-        })
+        # 1) Standarkan nama kolom
+        df = standardize_columns(df)
 
+        # 2) Daftar fitur sesuai training
         fitur = [
             'Tavg: Temperatur rata-rata (°C)',
             'RH_avg: Kelembapan rata-rata (%)',
@@ -134,17 +169,20 @@ with st.container():
             'Kelembaban Permukaan Tanah'
         ]
 
-        # Safety check: jika ada kolom yang belum ada, beri info
-        missing = [c for c in fitur + ['Waktu'] if c not in df.columns]
-        if missing:
-            st.error(f"Kolom berikut belum ditemukan di Google Sheet: {missing}. "
-                     "Silakan sesuaikan header kolom di sheet atau mapping rename di kode.")
+        needed = fitur + ['Waktu']
+        missing_now = [c for c in needed if c not in df.columns]
+        if missing_now:
+            st.error(
+                "Kolom berikut belum ditemukan setelah standarisasi: "
+                f"{missing_now}. Mohon cek header di Google Sheet."
+            )
         else:
-            clean_df = df[fitur].copy()
+            # 3) Casting angka (koma -> titik)
             for col in fitur:
-                clean_df[col] = clean_df[col].astype(str).str.replace(',', '.').astype(float).fillna(0)
+                df[col] = to_float_series(df[col])
 
-            scaled_all = scaler.transform(clean_df)
+            # 4) Prediksi seluruh baris, ambil baris terakhir untuk display
+            scaled_all = scaler.transform(df[fitur])
             predictions = [convert_to_label(p) for p in model.predict(scaled_all)]
             df["Prediksi Kebakaran"] = predictions
 
@@ -178,7 +216,7 @@ with st.container():
                 unsafe_allow_html=True
             )
 
-# ============ Load ViT-GRU ============
+# =========================== ViT-GRU =================================
 vitgru_path = "vitgru.pt"
 gdrive_url = "https://drive.google.com/uc?id=18L1CzKDuz-ESnJUdzlOkKYl2GbPA2gvI"
 if not os.path.exists(vitgru_path):
@@ -220,11 +258,9 @@ def classify_fire(image):
     return label, prob[0][1 - label].item()
 
 def detect_fire_yolo(img_pil):
-    # Jika YOLO tidak tersedia, kembalikan gambar asli + info
     if yolo_model is None:
-        st.info("YOLO belum siap (best.pt belum tersedia/invalid). Tampilkan gambar asli tanpa bounding box.")
+        st.info("YOLO belum siap (best.pt belum tersedia/invalid). Menampilkan gambar tanpa bounding box.")
         return img_pil
-
     img_array = np.array(img_pil)
     results = yolo_model(img_array, verbose=False)[0]
     boxes = results.boxes
@@ -238,7 +274,6 @@ def detect_fire_yolo(img_pil):
                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 0), 2)
     return Image.fromarray(img_array)
 
-# === Fungsi Keputusan Akhir Multimodal ===
 def get_multimodal_decision(visual_label, iot_label):
     if visual_label == 1 and "Very High" in iot_label:
         return "Kebakaran Telah Terjadi", "Indikasi sangat kuat bahwa kebakaran telah terjadi berdasarkan konfirmasi visual dan sensor.", "#B22222", "🔥"
@@ -259,7 +294,7 @@ def get_multimodal_decision(visual_label, iot_label):
     else:
         return "Tidak Diketahui", "Data tidak mencukupi untuk menyimpulkan status kebakaran.", "#808080", "❓"
 
-# ============ Tampilkan Deteksi ============
+# ========================= Output Visual =============================
 if image is not None:
     col1, col2 = st.columns(2)
     with col1:
@@ -274,8 +309,7 @@ if image is not None:
         st.markdown(f"<h2 style='text-align: center; color: {color};'>{label_str}</h2>", unsafe_allow_html=True)
         st.markdown(f"<p style='text-align: center;'>Confidence: <b>{confidence*100:.2f}%</b></p>", unsafe_allow_html=True)
 
-    # === Tampilkan Keputusan Multimodal ===
-    if risk_label is not None:
+    if 'risk_label' in locals() and risk_label is not None:
         final_label, final_desc, final_color, final_icon = get_multimodal_decision(label, risk_label)
         st.markdown("<hr style='border: 2px solid red;'>", unsafe_allow_html=True)
         st.markdown("<h4 style='text-align:center;'>🧠 Keputusan Akhir Berdasarkan Multimodal</h4>", unsafe_allow_html=True)
