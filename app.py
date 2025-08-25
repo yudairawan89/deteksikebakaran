@@ -59,7 +59,7 @@ scaler = load_scaler()
 
 @st.cache_data(ttl=60)
 def load_sensor_data():
-    url = "https://docs.google.com/spreadsheets/d/1ZscUJ6SLPIF33t8ikVHUmR68b-y3Q9_r_p9d2rDRMCM/export?format=csv"
+    url = "https://docs.google.com/spreadsheets/d/1epkIp2U1okjCfXOoz_bkgey4kYa30EtmWlLB6c_911Y/export?format=csv"
     return pd.read_csv(url)
 
 # ============ Upload Gambar ============
@@ -247,3 +247,4 @@ if image is not None:
         """, unsafe_allow_html=True)
 else:
     st.info("Silakan upload atau ambil gambar terlebih dahulu.")
+
