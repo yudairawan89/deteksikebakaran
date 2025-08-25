@@ -59,6 +59,7 @@ scaler = load_scaler()
 
 @st.cache_data(ttl=60)
 def load_sensor_data():
+    # === LINK DIGANTI KE SHEET BARU (format CSV) ===
     url = "https://docs.google.com/spreadsheets/d/1epkIp2U1okjCfXOoz_bkgey4kYa30EtmWlLB6c_911Y/export?format=csv"
     return pd.read_csv(url)
 
@@ -247,4 +248,3 @@ if image is not None:
         """, unsafe_allow_html=True)
 else:
     st.info("Silakan upload atau ambil gambar terlebih dahulu.")
-
