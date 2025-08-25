@@ -92,27 +92,18 @@ def to_float_series(s: pd.Series) -> pd.Series:
          .fillna(0.0)
     )
 
-# ========================== YOLO Loader ==============================
-# Coba berurutan: .pt → .torchscript
-YOLO_CANDIDATES = ["best.pt", "best.torchscript"]
+# ========================== YOLO Loader (best.pt saja) ===============
+YOLO_WEIGHTS = "best.pt"
 
 @st.cache_resource(show_spinner=True)
 def get_yolo():
-    errors = []
-    for path in YOLO_CANDIDATES:
-        if not os.path.exists(path):
-            errors.append(f"- {path}: tidak ditemukan")
-            continue
-        try:
-            m = YOLO(path)   # Ultralytics v8 bisa memuat .pt maupun .torchscript hasil export
-            st.success(f"YOLO berhasil dimuat dari: {path}")
-            return m
-        except Exception as e:
-            errors.append(f"- {path}: gagal load ({e})")
-            continue
-    st.info("Tidak bisa memuat model YOLO (.pt/.torchscript). Aplikasi tetap berjalan tanpa bounding box.\n"
-            + "\n".join(errors))
-    return None
+    try:
+        model = YOLO(YOLO_WEIGHTS)  # Ultralytics checkpoint hasil training
+        st.success(f"YOLO berhasil dimuat dari: {YOLO_WEIGHTS}")
+        return model
+    except Exception as e:
+        st.error(f"Gagal memuat YOLO dari '{YOLO_WEIGHTS}'. Detail: {e}")
+        return None
 
 yolo_model = get_yolo()
 
@@ -236,7 +227,8 @@ def detect_fire_yolo(img_pil):
         st.info("YOLO belum siap. Menampilkan gambar tanpa bounding box.")
         return img_pil
     img_array = np.array(img_pil)
-    results = yolo_model(img_array, verbose=False)[0]
+    # Optional: kecilkan resolusi untuk CPU agar lebih cepat, contoh imgsz=416
+    results = yolo_model(img_array, imgsz=416, verbose=False)[0]
     boxes = results.boxes
     for box in boxes:
         x1, y1, x2, y2 = map(int, box.xyxy[0])
