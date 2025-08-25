@@ -21,10 +21,7 @@ st.markdown("""
     <hr style="border: 2px solid red;">
 """, unsafe_allow_html=True)
 
-# ============ Load Model ============
-yolo_model = YOLO("best.pt")
-vit_gru_model = None
-
+# ============ Util: Konversi Hari/Bulan ============
 def convert_day_to_indonesian(day_name):
     return {'Monday': 'Senin', 'Tuesday': 'Selasa', 'Wednesday': 'Rabu',
             'Thursday': 'Kamis', 'Friday': 'Jumat', 'Saturday': 'Sabtu',
@@ -46,6 +43,7 @@ risk_styles = {
     "Very High / Sangat Tinggi": ("white", "red")
 }
 
+# ============ Loader Model ML IoT ============
 @st.cache_resource
 def load_model():
     return joblib.load("LSTM.joblib")
@@ -57,11 +55,40 @@ def load_scaler():
 model = load_model()
 scaler = load_scaler()
 
+# ============ Data Sensor dari Google Sheets ============
 @st.cache_data(ttl=60)
 def load_sensor_data():
-    # === LINK DIGANTI KE SHEET BARU (format CSV) ===
+    # LINK GOOGLE SHEETS BARU (export CSV)
     url = "https://docs.google.com/spreadsheets/d/1epkIp2U1okjCfXOoz_bkgey4kYa30EtmWlLB6c_911Y/export?format=csv"
     return pd.read_csv(url)
+
+# ============ YOLO Loader Aman ============
+YOLO_WEIGHTS_PATH = "best.pt"
+
+def _valid_file(path: str, min_bytes: int = 100_000) -> bool:
+    return os.path.exists(path) and os.path.getsize(path) >= min_bytes
+
+@st.cache_resource(show_spinner=True)
+def get_yolo():
+    """Coba load YOLO; jika file tidak ada/korup atau gagal load, kembalikan None & tampilkan pesan yang ramah."""
+    if not _valid_file(YOLO_WEIGHTS_PATH):
+        st.warning(
+            f"Model YOLO '{YOLO_WEIGHTS_PATH}' tidak ditemukan atau terlalu kecil. "
+            f"Letakkan file bobot di direktori yang sama dengan aplikasi (mis. /mount/src/deteksikebakaran/). "
+            f"Nama file: {YOLO_WEIGHTS_PATH}"
+        )
+        return None
+    try:
+        return YOLO(YOLO_WEIGHTS_PATH)
+    except Exception as e:
+        st.error(
+            "Gagal memuat YOLO dari 'best.pt'. "
+            "Periksa kompatibilitas versi Ultralytics/PyTorch atau ulangi unggah file bobot.\n\n"
+            f"Detail error: {e}"
+        )
+        return None
+
+yolo_model = get_yolo()
 
 # ============ Upload Gambar ============
 st.sidebar.header("📸 Input Gambar")
@@ -89,6 +116,7 @@ with st.container():
 
     risk_label = None  # inisialisasi
     if df is not None and not df.empty:
+        # Jika nama kolom di sheet baru berbeda, sesuaikan di sini
         df = df.rename(columns={
             'Suhu Udara': 'Tavg: Temperatur rata-rata (°C)',
             'Kelembapan Udara': 'RH_avg: Kelembapan rata-rata (%)',
@@ -106,43 +134,49 @@ with st.container():
             'Kelembaban Permukaan Tanah'
         ]
 
-        clean_df = df[fitur].copy()
-        for col in fitur:
-            clean_df[col] = clean_df[col].astype(str).str.replace(',', '.').astype(float).fillna(0)
+        # Safety check: jika ada kolom yang belum ada, beri info
+        missing = [c for c in fitur + ['Waktu'] if c not in df.columns]
+        if missing:
+            st.error(f"Kolom berikut belum ditemukan di Google Sheet: {missing}. "
+                     "Silakan sesuaikan header kolom di sheet atau mapping rename di kode.")
+        else:
+            clean_df = df[fitur].copy()
+            for col in fitur:
+                clean_df[col] = clean_df[col].astype(str).str.replace(',', '.').astype(float).fillna(0)
 
-        scaled_all = scaler.transform(clean_df)
-        predictions = [convert_to_label(p) for p in model.predict(scaled_all)]
-        df["Prediksi Kebakaran"] = predictions
+            scaled_all = scaler.transform(clean_df)
+            predictions = [convert_to_label(p) for p in model.predict(scaled_all)]
+            df["Prediksi Kebakaran"] = predictions
 
-        last_row = df.iloc[-1]
-        waktu = pd.to_datetime(last_row['Waktu'])
-        hari = convert_day_to_indonesian(waktu.strftime('%A'))
-        bulan = convert_month_to_indonesian(waktu.strftime('%B'))
-        tanggal = waktu.strftime(f'%d {bulan} %Y')
-        risk_label = last_row["Prediksi Kebakaran"]
-        font, bg = risk_styles.get(risk_label, ("black", "white"))
+            last_row = df.iloc[-1]
+            waktu = pd.to_datetime(last_row['Waktu'])
+            hari = convert_day_to_indonesian(waktu.strftime('%A'))
+            bulan = convert_month_to_indonesian(waktu.strftime('%B'))
+            tanggal = waktu.strftime(f'%d {bulan} %Y')
+            risk_label = last_row["Prediksi Kebakaran"]
+            font, bg = risk_styles.get(risk_label, ("black", "white"))
 
-        sensor_df = pd.DataFrame({
-            "Variabel": fitur,
-            "Value": [f"{last_row[col]:.1f}" for col in fitur]
-        })
+            sensor_df = pd.DataFrame({
+                "Variabel": fitur,
+                "Value": [f"{last_row[col]:.1f}" for col in fitur]
+            })
 
-        st.markdown("<h5 style='text-align: center;'>Data Sensor Realtime</h5>", unsafe_allow_html=True)
-        sensor_html = "<table style='width: 100%; border-collapse: collapse;'>"
-        sensor_html += "<thead><tr><th>Variabel</th><th>Value</th></tr></thead><tbody>"
-        for i in range(len(sensor_df)):
-            var = sensor_df.iloc[i, 0]
-            val = sensor_df.iloc[i, 1]
-            sensor_html += f"<tr><td style='padding:6px;'>{var}</td><td style='padding:6px;'>{val}</td></tr>"
-        sensor_html += "</tbody></table>"
-        st.markdown(sensor_html, unsafe_allow_html=True)
+            st.markdown("<h5 style='text-align: center;'>Data Sensor Realtime</h5>", unsafe_allow_html=True)
+            sensor_html = "<table style='width: 100%; border-collapse: collapse;'>"
+            sensor_html += "<thead><tr><th>Variabel</th><th>Value</th></tr></thead><tbody>"
+            for i in range(len(sensor_df)):
+                var = sensor_df.iloc[i, 0]
+                val = sensor_df.iloc[i, 1]
+                sensor_html += f"<tr><td style='padding:6px;'>{var}</td><td style='padding:6px;'>{val}</td></tr>"
+            sensor_html += "</tbody></table>"
+            st.markdown(sensor_html, unsafe_allow_html=True)
 
-        st.markdown(
-            f"<p style='background-color:{bg}; color:{font}; padding:10px; border-radius:8px; font-weight:bold;'>"
-            f"Pada hari {hari}, tanggal {tanggal}, lahan ini diprediksi memiliki tingkat resiko kebakaran: "
-            f"<span style='text-decoration: underline; font-size: 22px;'>{risk_label}</span></p>",
-            unsafe_allow_html=True
-        )
+            st.markdown(
+                f"<p style='background-color:{bg}; color:{font}; padding:10px; border-radius:8px; font-weight:bold;'>"
+                f"Pada hari {hari}, tanggal {tanggal}, lahan ini diprediksi memiliki tingkat resiko kebakaran: "
+                f"<span style='text-decoration: underline; font-size: 22px;'>{risk_label}</span></p>",
+                unsafe_allow_html=True
+            )
 
 # ============ Load ViT-GRU ============
 vitgru_path = "vitgru.pt"
@@ -186,6 +220,11 @@ def classify_fire(image):
     return label, prob[0][1 - label].item()
 
 def detect_fire_yolo(img_pil):
+    # Jika YOLO tidak tersedia, kembalikan gambar asli + info
+    if yolo_model is None:
+        st.info("YOLO belum siap (best.pt belum tersedia/invalid). Tampilkan gambar asli tanpa bounding box.")
+        return img_pil
+
     img_array = np.array(img_pil)
     results = yolo_model(img_array, verbose=False)[0]
     boxes = results.boxes
