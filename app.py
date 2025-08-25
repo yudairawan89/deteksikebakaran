@@ -63,11 +63,6 @@ def load_sensor_data():
     return pd.read_csv(SHEET_CSV)
 
 def standardize_columns(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Standarkan kolom sheet ke nama yang diharapkan oleh scaler/model.
-    Mendukung beberapa alias bila nama kolom berubah.
-    """
-    # Aliases dari sheet -> target
     mapping_candidates = {
         "Waktu": ["Waktu", "Timestamp", "Time", "Datetime"],
         "Tavg: Temperatur rata-rata (°C)": ["Tavg: Temperatur rata-rata (°C)", "Suhu", "Temperature", "Temp"],
@@ -76,32 +71,18 @@ def standardize_columns(df: pd.DataFrame) -> pd.DataFrame:
         "ff_avg: Kecepatan angin rata-rata (m/s)": ["ff_avg: Kecepatan angin rata-rata (m/s)", "Kecepatan Angin", "Wind Speed"],
         "RR: Curah hujan (mm)": ["RR: Curah hujan (mm)", "Curah Hujan", "Rainfall"]
     }
-
-    rename_map = {}
-    missing_targets = []
-
+    rename_map, missing_targets = {}, []
     for target, aliases in mapping_candidates.items():
-        found = None
-        for a in aliases:
-            if a in df.columns:
-                found = a
-                break
-        if found is not None:
-            rename_map[found] = target
-        else:
-            missing_targets.append(target)
-
+        found = next((a for a in aliases if a in df.columns), None)
+        if found: rename_map[found] = target
+        else: missing_targets.append(target)
     df = df.rename(columns=rename_map)
-
-    # Tampilkan informasi jika masih ada yang kurang
     if missing_targets:
         st.warning(f"Beberapa kolom yang diharapkan belum ada di data: {missing_targets}. "
                    f"Kolom tersedia saat ini: {list(df.columns)}")
-
     return df
 
 def to_float_series(s: pd.Series) -> pd.Series:
-    # ganti koma -> titik, drop spasi, lalu ke float; NaN jadi 0
     return (
         s.astype(str)
          .str.replace(",", ".", regex=False)
@@ -112,24 +93,26 @@ def to_float_series(s: pd.Series) -> pd.Series:
     )
 
 # ========================== YOLO Loader ==============================
-YOLO_WEIGHTS_PATH = "best.pt"
-
-def _valid_file(path: str, min_bytes: int = 100_000) -> bool:
-    return os.path.exists(path) and os.path.getsize(path) >= min_bytes
+# Coba berurutan: .pt → .torchscript
+YOLO_CANDIDATES = ["best.pt", "best.torchscript"]
 
 @st.cache_resource(show_spinner=True)
 def get_yolo():
-    if not _valid_file(YOLO_WEIGHTS_PATH):
-        st.info(
-            f"Model YOLO '{YOLO_WEIGHTS_PATH}' belum ditemukan/invalid. "
-            f"Aplikasi tetap jalan tanpa bounding box. Taruh file bobot di folder app."
-        )
-        return None
-    try:
-        return YOLO(YOLO_WEIGHTS_PATH)
-    except Exception as e:
-        st.error(f"Gagal memuat YOLO dari '{YOLO_WEIGHTS_PATH}'. Detail: {e}")
-        return None
+    errors = []
+    for path in YOLO_CANDIDATES:
+        if not os.path.exists(path):
+            errors.append(f"- {path}: tidak ditemukan")
+            continue
+        try:
+            m = YOLO(path)   # Ultralytics v8 bisa memuat .pt maupun .torchscript hasil export
+            st.success(f"YOLO berhasil dimuat dari: {path}")
+            return m
+        except Exception as e:
+            errors.append(f"- {path}: gagal load ({e})")
+            continue
+    st.info("Tidak bisa memuat model YOLO (.pt/.torchscript). Aplikasi tetap berjalan tanpa bounding box.\n"
+            + "\n".join(errors))
+    return None
 
 yolo_model = get_yolo()
 
@@ -157,10 +140,7 @@ with st.container():
 
     risk_label = None
     if df is not None and not df.empty:
-        # 1) Standarkan nama kolom
         df = standardize_columns(df)
-
-        # 2) Daftar fitur sesuai training
         fitur = [
             'Tavg: Temperatur rata-rata (°C)',
             'RH_avg: Kelembapan rata-rata (%)',
@@ -168,20 +148,14 @@ with st.container():
             'ff_avg: Kecepatan angin rata-rata (m/s)',
             'Kelembaban Permukaan Tanah'
         ]
-
         needed = fitur + ['Waktu']
         missing_now = [c for c in needed if c not in df.columns]
         if missing_now:
-            st.error(
-                "Kolom berikut belum ditemukan setelah standarisasi: "
-                f"{missing_now}. Mohon cek header di Google Sheet."
-            )
+            st.error("Kolom berikut belum ditemukan setelah standarisasi: "
+                     f"{missing_now}. Mohon cek header di Google Sheet.")
         else:
-            # 3) Casting angka (koma -> titik)
             for col in fitur:
                 df[col] = to_float_series(df[col])
-
-            # 4) Prediksi seluruh baris, ambil baris terakhir untuk display
             scaled_all = scaler.transform(df[fitur])
             predictions = [convert_to_label(p) for p in model.predict(scaled_all)]
             df["Prediksi Kebakaran"] = predictions
@@ -259,7 +233,7 @@ def classify_fire(image):
 
 def detect_fire_yolo(img_pil):
     if yolo_model is None:
-        st.info("YOLO belum siap (best.pt belum tersedia/invalid). Menampilkan gambar tanpa bounding box.")
+        st.info("YOLO belum siap. Menampilkan gambar tanpa bounding box.")
         return img_pil
     img_array = np.array(img_pil)
     results = yolo_model(img_array, verbose=False)[0]
