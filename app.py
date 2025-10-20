@@ -118,7 +118,7 @@ auto_refresh = st.sidebar.checkbox("🔁 Auto-refresh data sensor (5 detik)", va
 # Jalankan autorefresh (me-refresh seluruh app) jika toggle aktif
 if auto_refresh:
     # interval dalam ms → 5000 = 5 detik
-    st_autorefresh(interval=5000, key="sensor_auto_refresh")
+    st_autorefresh(interval=50000000, key="sensor_auto_refresh")
 
 image = None
 if option == "Upload Gambar":
@@ -297,3 +297,4 @@ if image is not None:
         """, unsafe_allow_html=True)
 else:
     st.info("Silakan upload atau ambil gambar terlebih dahulu.")
+
